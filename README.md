@@ -8,11 +8,11 @@
 
 在 GitHub 上 fork 這個專案，然後在 Settings -> Secrets 裡面新增以下幾個 Secret：
 
-| Secret 名稱 | 說明 | 範例 |
-| ----------- | ---- | ---- |
-| USERNAME | 你的交大帳號 |
-| PASSWORD | 你的交大密碼 |
-| TOTP | 你的交大帳號的 TOTP (Google Authenticator) secret |
+| Secret 名稱 | 說明                                              | 範例 |
+| ----------- | ------------------------------------------------- | ---- |
+| USERNAME    | 你的交大帳號                                      |
+| PASSWORD    | 你的交大密碼                                      |
+| TOTP        | 你的交大帳號的 TOTP (Google Authenticator) secret |
 
 ## VPN
 
