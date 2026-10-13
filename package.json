@@ -7,7 +7,7 @@
 		"preinstall": "npx only-allow pnpm",
 		"prepare": "sh -c 'if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git config core.hooksPath .githooks; fi'",
 		"start": "node --env-file-if-exists=.env src/index.js",
-		"test": "node --test src/"
+		"test": "node --test \"src/**/*.test.js\""
 	},
 	"dependencies": {
 		"playwright": "^1.64.0"
