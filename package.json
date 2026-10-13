@@ -1,14 +1,21 @@
 {
-	"name": "project",
+	"name": "nycu-timeclock",
 	"type": "module",
 	"scripts": {
 		"format": "prettier --write .",
+		"format:check": "prettier --check .",
 		"preinstall": "npx only-allow pnpm",
-		"prepare": "sh -c 'if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git config core.hooksPath .githooks; fi'"
+		"prepare": "sh -c 'if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git config core.hooksPath .githooks; fi'",
+		"start": "node --env-file-if-exists=.env src/index.js",
+		"test": "node --test src/"
+	},
+	"dependencies": {
+		"playwright": "^1.64.0"
 	},
 	"devDependencies": {
 		"prettier": "^3.9.10",
 		"prettier-plugin-organize-imports": "^4.3.0",
 		"prettier-plugin-packagejson": "^3.0.2"
-	}
+	},
+	"packageManager": "pnpm@12.11.2"
 }
