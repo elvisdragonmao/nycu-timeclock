@@ -1,0 +1,10 @@
+{
+	"name": "project",
+	"type": "module",
+	"scripts": {
+		"preinstall": "npx only-allow pnpm",
+		"prepare": "sh -c 'if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git config core.hooksPath .githooks; fi'",
+		"format": "prettier --write ."
+	},
+	"devDependencies": {}
+}
