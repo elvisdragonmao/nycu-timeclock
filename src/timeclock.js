@@ -96,23 +96,19 @@ export function planSignIn(open, { now = new Date(), recentMinutes = 30 } = {}) 
 }
 
 /**
- * Some sign-ins (e.g. in the afternoon) ask for a reason on the confirmation
- * panel. Pick the configured reason from any dropdown that offers it.
+ * During class hours the confirmation panel asks for a reason as a group of
+ * radio buttons (調課、停課、課程已請假、其他). Pick the configured one.
  */
 async function answerReasonPrompt(panel, reason, log) {
-	const selects = panel.locator("select");
-	for (let i = 0; i < (await selects.count()); i++) {
-		const select = selects.nth(i);
-		const label = (await select.locator("option").allInnerTexts()).find(text => reason.test(text));
-		if (!label) continue;
+	const radios = panel.locator("input[type=radio]");
+	if (!(await radios.count())) return;
 
-		log(`選擇原因：${label.trim()}`);
-		const page = panel.page();
-		const autoPostBack = ((await select.getAttribute("onchange")) ?? "").includes("__doPostBack");
-		await Promise.all([autoPostBack ? page.waitForNavigation({ waitUntil: "load" }) : null, select.selectOption({ label })]);
-		return true;
-	}
-	return false;
+	const labels = await panel.locator("label").evaluateAll(els => els.map(el => ({ text: el.innerText.trim(), for: el.htmlFor })));
+	const choice = labels.find(label => reason.test(label.text));
+	if (!choice) throw new Error(`確認畫面要求選擇原因，但找不到符合 ${reason} 的選項：${labels.map(l => l.text).join("、")}`);
+
+	log(`選擇原因：${choice.text}`);
+	await panel.locator(`[id="${choice.for}"]`).check();
 }
 
 /**
