@@ -159,3 +159,4 @@ vite.config.ts.timestamp-*
 
 # timeclock debug snapshots (contain personal data)
 debug/
+.cron.lock

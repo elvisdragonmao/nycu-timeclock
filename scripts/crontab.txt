@@ -1,0 +1,6 @@
+# nycu-timeclock: Monday to Friday, machine clock in Asia/Taipei.
+# Install with: crontab scripts/crontab.txt (replaces the current crontab).
+0 8 * * 1-5 $HOME/nycu-timeclock/scripts/cron.sh signin --not-before 08:00
+1 12 * * 1-5 $HOME/nycu-timeclock/scripts/cron.sh signout
+45 12 * * 1-5 $HOME/nycu-timeclock/scripts/cron.sh signin --not-before 12:45
+1 17 * * 1-5 $HOME/nycu-timeclock/scripts/cron.sh signout

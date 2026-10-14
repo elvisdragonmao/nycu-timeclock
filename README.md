@@ -1,10 +1,10 @@
 # 陽明交大 受僱者線上自動簽到
 
-在交大學生部分單位的助教費、講師費等等費用會使用「零時工」的方式報時數。因此需要走個流程打卡簽到。不過誰會每天記得要打卡，我每天起床的時間都不固定了。因此寫了一個自動打卡的 GitHub Actions 來讓我每天自動幫我打卡。
+在交大學生部分單位的助教費、講師費等等費用會使用「零時工」的方式報時數。因此需要走個流程打卡簽到。不過誰會每天記得要打卡，我每天起床的時間都不固定了。因此寫了一個自動打卡程式，每天自動幫我打卡。
 
 打卡完成會傳送結果到 Discord Webhook 頻道，方便我確認打卡是否成功。
 
-打卡時間（週一到週五，台灣時間）：08:00 簽到、12:01 簽退、12:45 簽到、17:01 簽退，每日兩段各四小時。工時以整小時計算，而 GitHub 排程有時會延遲好幾個小時，所以每個 workflow 都提早數小時啟動（05:00、10:00、14:00），再由程式等到準確的時間才登入打卡。時間設定在 [`.github/workflows/timeclock.yml`](.github/workflows/timeclock.yml)。
+打卡時間（週一到週五，台灣時間）：08:00 簽到、12:01 簽退、12:45 簽到、17:01 簽退，每日兩段各四小時。排程由校內機器的 crontab 執行（[`scripts/crontab.txt`](scripts/crontab.txt)），不用 GitHub Actions 的 `schedule`：實測 GitHub 排程會延遲 2 到 5 小時，工時又以整小時計算，延遲會直接算錯時數。
 
 ## 運作方式
 
@@ -18,18 +18,34 @@
 
 ## 使用方式
 
-在 GitHub 上 fork 這個專案，然後在 Settings -> Secrets 裡面新增以下幾個 Secret：
+需要一台在校園網路內（或用 VPN 連進校園網路）、可以使用 Docker 的機器，時區設成 `Asia/Taipei`。
 
-| Secret 名稱           | 說明                                                                                               | 範例 |
-| --------------------- | -------------------------------------------------------------------------------------------------- | ---- |
-| `USERNAME`            | 你的交大帳號                                                                                       |
-| `PASSWORD`            | 你的交大密碼                                                                                       |
-| `TOTP`                | 你的交大帳號的 TOTP (Google Authenticator) secret，可以是 base32 secret 或完整的 `otpauth://` 網址 |
+```sh
+git clone https://github.com/elvisdragonmao/nycu-timeclock.git ~/nycu-timeclock
+cd ~/nycu-timeclock
+cp .env.example .env # 填入帳號密碼，見下表
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/app" -w /app \
+  mcr.microsoft.com/playwright:v1.64.0-noble npx -y pnpm@12.11.2 install --frozen-lockfile
+scripts/cron.sh status && tail logs/cron.log  # 確認可以登入
+crontab scripts/crontab.txt                   # 會取代目前的 crontab
+```
+
+| 變數                  | 說明                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `NYCU_USERNAME`       | 你的交大帳號                                                                                       |
+| `NYCU_PASSWORD`       | 你的交大密碼                                                                                       |
+| `NYCU_TOTP_SECRET`    | 你的交大帳號的 TOTP (Google Authenticator) secret，可以是 base32 secret 或完整的 `otpauth://` 網址 |
 | `DISCORD_WEBHOOK_URL` | 選填，接收打卡結果的 Discord Webhook 網址                                                          |
 
-也可以在 Actions 頁面手動執行 Timeclock workflow，選擇 `status`、`signin`、`signout`，或與排程相同流程的 `morning`、`noon`、`evening`（例如排程錯過時手動補跑），並可勾選 dry run。
+執行紀錄寫在 `logs/cron.log`。更新程式時執行 `git pull`，若 `pnpm-lock.yaml` 有變動，再跑一次上面的 install 指令。
 
-## 本機執行
+### 從 GitHub Actions 手動執行
+
+把同一台機器註冊成 self-hosted runner，並在 Settings → Secrets 新增 `USERNAME`、`PASSWORD`、`TOTP`、`DISCORD_WEBHOOK_URL`（對應上表），就可以在 Actions 頁面手動執行 Timeclock workflow，選擇 `status`、`signin` 或 `signout`，並可勾選 dry run。Workflow 在 `mcr.microsoft.com/playwright` 容器中執行，所以 Runner 需要能使用 Docker。Runner 要開機自動啟動的話，在 runner 目錄執行 `sudo ./svc.sh install && sudo ./svc.sh start`。
+
+公開 repo 搭配 self-hosted runner 時，請到 Settings → Actions → General 將 fork pull request 設為「Require approval for all outside collaborators」，避免別人的 PR 在你的機器上執行程式。
+
+## 本機開發
 
 ```sh
 pnpm install
@@ -42,14 +58,6 @@ pnpm start signout
 ```
 
 失敗時會把截圖與 HTML 存到 `debug/`（已在 `.gitignore` 中，內含個人資料，請勿上傳）。設定 `HEADLESS=false` 可以看到瀏覽器畫面。
-
-## VPN
-
-由於學校的打卡系統需要在校園網路內才能使用，因此請使用自己的機器作為 Actions Runner，並確保機器網路在學校裡面，或是使用 VPN 連線到校園網路。
-
-Workflow 使用 `runs-on: self-hosted`，並在 `mcr.microsoft.com/playwright` 容器中執行，所以 Runner 機器需要能使用 Docker。Runner 要開機自動啟動的話，在 runner 目錄執行 `sudo ./svc.sh install && sudo ./svc.sh start`。
-
-公開 repo 搭配 self-hosted runner 時，請到 Settings → Actions → General 將 fork pull request 設為「Require approval for all outside collaborators」，避免別人的 PR 在你的機器上執行程式。
 
 ## LICENSE
 

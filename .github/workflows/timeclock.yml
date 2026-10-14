@@ -1,19 +1,15 @@
 name: Timeclock
 
 on:
-  schedule:
-    # Times are Asia/Taipei (UTC+8), Monday to Friday. Scheduled runs can be
-    # delayed by hours, so each run starts well ahead and waits for the exact
-    # time itself.
-    - cron: "0 21 * * 0-4" # 05:00 → sign in at 08:00
-    - cron: "0 2 * * 1-5" # 10:00 → sign out at 12:01, sign in at 12:45
-    - cron: "0 6 * * 1-5" # 14:00 → sign out at 17:01
+  # Scheduled punches run from crontab on the runner machine (see
+  # scripts/crontab.txt), because GitHub's scheduled runs can be hours late.
+  # This workflow is for manual runs.
   workflow_dispatch:
     inputs:
       action:
-        description: Action to run (morning/noon/evening run the same steps as the schedule)
+        description: Action to run
         type: choice
-        options: [status, signin, signout, morning, noon, evening]
+        options: [status, signin, signout]
         default: status
       dry-run:
         description: Log in and decide, but do not click
@@ -32,7 +28,7 @@ jobs:
     # The timeclock system is only reachable from the campus network.
     runs-on: self-hosted
     container: mcr.microsoft.com/playwright:v1.64.0-noble
-    timeout-minutes: 300
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -46,21 +42,10 @@ jobs:
       - name: Punch
         shell: bash
         env:
-          SCHEDULE: ${{ github.event.schedule }}
           ACTION: ${{ inputs.action }}
           DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
           NYCU_USERNAME: ${{ secrets.USERNAME }}
           NYCU_PASSWORD: ${{ secrets.PASSWORD }}
           NYCU_TOTP_SECRET: ${{ secrets.TOTP }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          case "${SCHEDULE:-$ACTION}" in
-            "0 21 * * 0-4" | morning) node src/index.js signin --not-before 08:00 $DRY_RUN ;;
-            "0 2 * * 1-5" | noon)
-              node src/index.js signout --not-before 12:01 $DRY_RUN; out=$?
-              node src/index.js signin --not-before 12:45 $DRY_RUN; in=$?
-              exit $((out || in)) ;;
-            "0 6 * * 1-5" | evening) node src/index.js signout --not-before 17:01 $DRY_RUN ;;
-            status | signin | signout) node src/index.js "$ACTION" $DRY_RUN ;;
-            *) echo "Unknown schedule or action: ${SCHEDULE:-$ACTION}"; exit 1 ;;
-          esac
+        run: node src/index.js "$ACTION" $DRY_RUN
