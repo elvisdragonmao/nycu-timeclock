@@ -3,16 +3,16 @@ import { parseArgs } from "node:util";
 import { chromium } from "playwright";
 import { notifyDiscord } from "./discord.js";
 import { loginPortal, openTimeclock } from "./portal.js";
-import { activeProjects, isStaleCheckIn, openRecord, punch, readProjects, readRecords, todayInTaipei } from "./timeclock.js";
+import { activeProjects, openHours, openRecord, planSignIn, punch, readProjects, readRecords, todayInTaipei } from "./timeclock.js";
 
-const USAGE = `Usage: node src/index.js <signin|signout|status> [--dry-run] [--not-before HH:MM] [--allow-stale]
+const USAGE = `Usage: node src/index.js <signin|signout|status> [--dry-run] [--not-before HH:MM]
 
-  signin                簽到所有目前可以簽到的計畫
-  signout               簽退所有目前可以簽退的計畫
+  signin                簽到所有進行中的計畫；有未簽退的紀錄會先簽退
+                        （30 分鐘內剛簽到的視為重複執行，略過）
+  signout               簽退所有未簽退的計畫
   status                只列出計畫與目前狀態
   --dry-run             登入並判斷要做什麼，但不實際點擊
-  --not-before HH:MM    等到台灣時間 HH:MM 才打卡（用來抵銷排程延遲）
-  --allow-stale         允許簽退跨日或超過 6 小時的簽到紀錄`;
+  --not-before HH:MM    等到台灣時間 HH:MM 才打卡（用來抵銷排程延遲）`;
 
 const ACTION_LABELS = { signin: "簽到", signout: "簽退", status: "查詢" };
 
@@ -20,7 +20,6 @@ const { values: flags, positionals } = parseArgs({
 	allowPositionals: true,
 	options: {
 		"dry-run": { type: "boolean", default: false },
-		"allow-stale": { type: "boolean", default: false },
 		"not-before": { type: "string" },
 		help: { type: "boolean", short: "h", default: false }
 	}
@@ -75,6 +74,33 @@ async function waitUntilTaipei(hhmm) {
 	await new Promise(resolve => setTimeout(resolve, delay));
 }
 
+/** Long open records usually mean a punch was missed; flag them in the report. */
+function warnIfLong(open) {
+	const hours = openHours(open);
+	if (hours > 6) log(`⚠ ${open.signIn} 的簽到已經開著 ${hours.toFixed(1)} 小時，簽退後會是一筆很長的紀錄，請確認是否需要請計畫主持人調整`);
+}
+
+/** Punch once, then confirm the result on the record viewer. */
+async function punchAndVerify(page, title, action) {
+	const project = (await readProjects(page)).find(p => p.title === title);
+	const buttonId = action === "signin" ? project?.signInButtonId : project?.signOutButtonId;
+	if (!buttonId) {
+		log(`✗ 列表頁沒有${ACTION_LABELS[action]}按鈕：${title}`);
+		await saveDebug(page);
+		return false;
+	}
+
+	const dialogs = await punch(page, project, action, { log });
+	for (const message of dialogs) log(`網頁訊息：${message}`);
+
+	const after = openRecord(await readRecords(page, project));
+	const done = action === "signin" ? Boolean(after) : !after;
+	const summary = (await readProjects(page)).find(p => p.title === title) ?? project;
+	log(`${done ? "✓" : "✗"} ${ACTION_LABELS[action]}${done ? "成功" : "後紀錄不符預期"}：\n  ${describe(summary, after)}`);
+	if (!done) await saveDebug(page);
+	return done;
+}
+
 async function run(page) {
 	await loginPortal(page, { username: env.NYCU_USERNAME, password: env.NYCU_PASSWORD, totpSecret: env.NYCU_TOTP_SECRET });
 	await openTimeclock(page);
@@ -88,63 +114,45 @@ async function run(page) {
 		return true;
 	}
 
-	const plan = [];
-	let ok = true;
-	for (const project of activeProjects(projects)) {
-		const open = openRecord(await readRecords(page, project));
-		const stale = isStaleCheckIn(open);
-		if (action === "signin") {
-			if (open && stale) {
-				log(`✗ 無法簽到：${open.signIn} 的簽到尚未簽退，而且已經跨日或超過 6 小時，請聯絡計畫主持人維護工時\n  ${describe(project, open)}`);
-				ok = false;
-			} else if (open) {
-				log(`• ${open.signIn} 已簽到，略過\n  ${describe(project, open)}`);
-			} else if (project.signInButtonId) {
-				plan.push(project);
-			}
-		} else if (!open) {
-			log(`• 沒有未簽退的紀錄，略過\n  ${describe(project)}`);
-		} else if (stale && !flags["allow-stale"]) {
-			log(`✗ 不簽退：${open.signIn} 的簽到已經跨日或超過 6 小時，簽退會產生不合規的紀錄（用 --allow-stale 強制）\n  ${describe(project, open)}`);
-			ok = false;
-		} else if (!project.signOutButtonId) {
-			log(`✗ 有 ${open.signIn} 的未簽退紀錄，但列表頁沒有簽退按鈕\n  ${describe(project, open)}`);
-			ok = false;
-		} else {
-			plan.push(project);
-		}
-	}
-
-	if (plan.length === 0) {
-		log(`沒有需要${ACTION_LABELS[action]}的計畫`);
-		return ok;
-	}
-
 	if (flags["not-before"] && !flags["dry-run"]) {
 		await waitUntilTaipei(flags["not-before"]);
-		// The session may have been idle for a while; reload the list before clicking.
+		// The session may have been idle for a while; reload the list before deciding.
 		await openTimeclock(page);
 	}
 
-	for (const planned of plan) {
-		if (flags["dry-run"]) {
-			log(`(dry run) 會${ACTION_LABELS[action]}：\n  ${describe(planned)}`);
-			continue;
+	let ok = true;
+	let acted = false;
+	for (const project of activeProjects(await readProjects(page))) {
+		const open = openRecord(await readRecords(page, project));
+		const steps = [];
+		if (action === "signout") {
+			if (open) steps.push("signout");
+			else log(`• 沒有未簽退的紀錄，略過\n  ${describe(project)}`);
+		} else {
+			const plan = planSignIn(open);
+			if (plan === "skip") log(`• ${open.signIn} 剛簽到，略過\n  ${describe(project, open)}`);
+			if (plan === "signout-first") {
+				log(`• 發現 ${open.signIn} 的簽到尚未簽退，先簽退再簽到`);
+				steps.push("signout");
+			}
+			if (plan !== "skip") steps.push("signin");
 		}
 
-		const project = (await readProjects(page)).find(p => p.title === planned.title) ?? planned;
-		const dialogs = await punch(page, project, action, { log });
-		for (const message of dialogs) log(`網頁訊息：${message}`);
-
-		const after = openRecord(await readRecords(page, project));
-		const done = action === "signin" ? Boolean(after) : !after;
-		const summary = (await readProjects(page)).find(p => p.title === project.title) ?? project;
-		log(`${done ? "✓" : "✗"} ${ACTION_LABELS[action]}${done ? "成功" : "後紀錄不符預期"}：\n  ${describe(summary, after)}`);
-		if (!done) {
-			ok = false;
-			await saveDebug(page);
+		if (open && steps[0] === "signout") warnIfLong(open);
+		for (const step of steps) {
+			acted = true;
+			if (flags["dry-run"]) {
+				log(`(dry run) 會${ACTION_LABELS[step]}：\n  ${describe(project, open)}`);
+				continue;
+			}
+			if (!(await punchAndVerify(page, project.title, step))) {
+				ok = false;
+				break;
+			}
 		}
 	}
+
+	if (!acted) log(`沒有需要${ACTION_LABELS[action]}的計畫`);
 	return ok;
 }
 

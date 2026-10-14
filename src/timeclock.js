@@ -68,20 +68,31 @@ export async function readRecords(page, project) {
 	}
 }
 
-/** The latest record that has a check-in but no check-out yet. */
+/**
+ * The latest record, if it has a check-in but no check-out yet. The query page
+ * does not list records of the same day in time order, so sort them first.
+ */
 export function openRecord(records) {
-	const last = records.at(-1);
-	return last?.signInAt && !last.signOutAt ? last : null;
+	const latest = records
+		.filter(r => r.signInAt)
+		.sort((a, b) => a.signInAt - b.signInAt)
+		.at(-1);
+	return latest && !latest.signOutAt ? latest : null;
+}
+
+/** How long a record has been open, in hours. */
+export function openHours(record, now = new Date()) {
+	return (now - record.signInAt) / 3_600_000;
 }
 
 /**
- * Signing out a check-in from an earlier day, or one open for longer than a
- * normal shift, would create a record the timeclock rules forbid (cross-day,
- * or more than 4 hours without a break). Those need a human to fix.
+ * Decide what a sign-in run should do. A check-in opened in the last few
+ * minutes most likely comes from a duplicate run, so leave it running instead
+ * of cutting the block short. Any older open check-in is signed out first.
  */
-export function isStaleCheckIn(record, { now = new Date(), maxHours = 6 } = {}) {
-	if (!record?.signInAt) return false;
-	return todayInTaipei(record.signInAt) !== todayInTaipei(now) || now - record.signInAt > maxHours * 3_600_000;
+export function planSignIn(open, { now = new Date(), recentMinutes = 30 } = {}) {
+	if (!open) return "signin";
+	return now - open.signInAt < recentMinutes * 60_000 ? "skip" : "signout-first";
 }
 
 /**
