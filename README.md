@@ -4,7 +4,7 @@
 
 打卡完成會傳送結果到 Discord Webhook 頻道，方便我確認打卡是否成功。
 
-打卡時間（週一到週五，台灣時間）：08:00 簽到、12:01 簽退、12:45 簽到、17:01 簽退，每日兩段各四小時。工時以整小時計算，而 GitHub 排程常會延遲，所以簽到的 workflow 會提早啟動，再由程式等到整點才簽到，避免少算一小時。時間設定在 [`.github/workflows/timeclock.yml`](.github/workflows/timeclock.yml)。
+打卡時間（週一到週五，台灣時間）：08:00 簽到、12:01 簽退、12:45 簽到、17:01 簽退，每日兩段各四小時。工時以整小時計算，而 GitHub 排程有時會延遲好幾個小時，所以每個 workflow 都提早數小時啟動（05:00、10:00、14:00），再由程式等到準確的時間才登入打卡。時間設定在 [`.github/workflows/timeclock.yml`](.github/workflows/timeclock.yml)。
 
 ## 運作方式
 
@@ -27,7 +27,7 @@
 | `TOTP`                | 你的交大帳號的 TOTP (Google Authenticator) secret，可以是 base32 secret 或完整的 `otpauth://` 網址 |
 | `DISCORD_WEBHOOK_URL` | 選填，接收打卡結果的 Discord Webhook 網址                                                          |
 
-也可以在 Actions 頁面手動執行 Timeclock workflow，選擇 `status`、`signin` 或 `signout`，並可勾選 dry run。
+也可以在 Actions 頁面手動執行 Timeclock workflow，選擇 `status`、`signin`、`signout`，或與排程相同流程的 `morning`、`noon`、`evening`（例如排程錯過時手動補跑），並可勾選 dry run。
 
 ## 本機執行
 

@@ -114,12 +114,6 @@ async function run(page) {
 		return true;
 	}
 
-	if (flags["not-before"] && !flags["dry-run"]) {
-		await waitUntilTaipei(flags["not-before"]);
-		// The session may have been idle for a while; reload the list before deciding.
-		await openTimeclock(page);
-	}
-
 	let ok = true;
 	let acted = false;
 	for (const project of activeProjects(await readProjects(page))) {
@@ -155,6 +149,9 @@ async function run(page) {
 	if (!acted) log(`沒有需要${ACTION_LABELS[action]}的計畫`);
 	return ok;
 }
+
+// Wait before logging in, so a long wait cannot outlive the Portal session.
+if (flags["not-before"] && !flags["dry-run"]) await waitUntilTaipei(flags["not-before"]);
 
 const browser = await chromium.launch({ headless: env.HEADLESS !== "false" });
 const context = await browser.newContext({ locale: "zh-TW", timezoneId: "Asia/Taipei" });
