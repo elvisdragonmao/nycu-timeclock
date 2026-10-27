@@ -9,7 +9,7 @@ on:
       action:
         description: Action to run
         type: choice
-        options: [status, signin, signout]
+        options: [status, signin, signout, update]
         default: status
       dry-run:
         description: Log in and decide, but do not click
@@ -24,7 +24,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  update:
+    if: inputs.action == 'update'
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - name: Update the crontab checkout
+        shell: bash
+        run: git -C "$HOME/nycu-timeclock" pull --ff-only origin main
+
   punch:
+    if: inputs.action != 'update'
     # The timeclock system is only reachable from the campus network.
     runs-on: self-hosted
     container: mcr.microsoft.com/playwright:v1.64.0-noble
