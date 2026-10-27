@@ -50,6 +50,16 @@ export function activeProjects(projects) {
 	return projects.filter(p => p.signInButtonId || p.signOutButtonId);
 }
 
+/** Whether the portal says this project still needs credited hours. */
+export function hasRemainingHours(hours) {
+	const remaining = hours.match(/尚缺[：:]\s*(\d+(?:\.\d+)?)\s*小時/);
+	if (remaining) return Number(remaining[1]) > 0;
+
+	// If the portal changes its wording, keep the existing behavior rather than
+	// silently skipping a project that may still need hours.
+	return true;
+}
+
 /**
  * Read a project's attendance records from its query page. The list page's
  * "本日" summary lags behind around midnight, so this is what we trust.
