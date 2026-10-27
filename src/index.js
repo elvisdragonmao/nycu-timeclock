@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { chromium } from "playwright";
 import { notifyDiscord } from "./discord.js";
 import { loginPortal, openTimeclock } from "./portal.js";
-import { activeProjects, openHours, openRecord, planSignIn, punch, readProjects, readRecords, todayInTaipei } from "./timeclock.js";
+import { activeProjects, hasRemainingHours, openHours, openRecord, planSignIn, punch, readProjects, readRecords, todayInTaipei } from "./timeclock.js";
 
 const USAGE = `Usage: node src/index.js <signin|signout|status> [--dry-run] [--not-before HH:MM]
 
@@ -122,6 +122,13 @@ async function run(page) {
 		if (action === "signout") {
 			if (open) steps.push("signout");
 			else log(`• 沒有未簽退的紀錄，略過\n  ${describe(project)}`);
+		} else if (!hasRemainingHours(project.hours)) {
+			if (open) {
+				log(`• 工時已滿；只簽退目前未結束的紀錄，不再簽到`);
+				steps.push("signout");
+			} else {
+				log(`• 工時已滿，略過簽到\n  ${describe(project)}`);
+			}
 		} else {
 			const plan = planSignIn(open);
 			if (plan === "skip") log(`• ${open.signIn} 剛簽到，略過\n  ${describe(project, open)}`);
