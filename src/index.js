@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { chromium } from "playwright";
-import { notifyDiscord } from "./discord.js";
+import { notifyDiscord, shouldNotifyDiscord } from "./discord.js";
 import { loginPortal, openTimeclock } from "./portal.js";
 import { activeProjects, hasRemainingHours, openHours, openRecord, planSignIn, punch, readProjects, readRecords, todayInTaipei } from "./timeclock.js";
 
@@ -111,7 +111,7 @@ async function run(page) {
 			const open = activeProjects([project]).length ? openRecord(await readRecords(page, project)) : null;
 			log(`- ${describe(project, open)}`);
 		}
-		return true;
+		return { ok: true, acted: false };
 	}
 
 	let ok = true;
@@ -154,7 +154,7 @@ async function run(page) {
 	}
 
 	if (!acted) log(`沒有需要${ACTION_LABELS[action]}的計畫`);
-	return ok;
+	return { ok, acted };
 }
 
 // Wait before logging in, so a long wait cannot outlive the Portal session.
@@ -165,8 +165,9 @@ const context = await browser.newContext({ locale: "zh-TW", timezoneId: "Asia/Ta
 const page = await context.newPage();
 
 let ok = false;
+let acted = false;
 try {
-	ok = await run(page);
+	({ ok, acted } = await run(page));
 } catch (error) {
 	log(`✗ 發生錯誤：${error.message}`);
 	await saveDebug(page);
@@ -174,9 +175,11 @@ try {
 	await browser.close();
 }
 
-await notifyDiscord(env.DISCORD_WEBHOOK_URL, {
-	title: `NYCU ${ACTION_LABELS[action]}${flags["dry-run"] ? "（dry run）" : ""}${ok ? "完成" : "失敗"}`,
-	description: lines.join("\n"),
-	success: ok
-});
+if (shouldNotifyDiscord({ action, success: ok, acted })) {
+	await notifyDiscord(env.DISCORD_WEBHOOK_URL, {
+		title: `NYCU ${ACTION_LABELS[action]}${flags["dry-run"] ? "（dry run）" : ""}${ok ? "完成" : "失敗"}`,
+		description: lines.join("\n"),
+		success: ok
+	});
+}
 process.exit(ok ? 0 : 1);

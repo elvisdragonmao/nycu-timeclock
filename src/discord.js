@@ -1,3 +1,8 @@
+/** Skip routine Discord messages when a sign-in run had nothing to do. */
+export function shouldNotifyDiscord({ action, success, acted }) {
+	return action !== "signin" || !success || acted;
+}
+
 /** Post a message to a Discord webhook. Does nothing when no webhook is configured. */
 export async function notifyDiscord(webhookUrl, { title, description, success }) {
 	if (!webhookUrl) return;
