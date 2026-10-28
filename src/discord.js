@@ -1,6 +1,6 @@
-/** Skip routine Discord messages when a sign-in run had nothing to do. */
+/** Skip routine Discord messages when a punch run had nothing to do. */
 export function shouldNotifyDiscord({ action, success, acted }) {
-	return action !== "signin" || !success || acted;
+	return action === "status" || !success || acted;
 }
 
 /** Post a message to a Discord webhook. Does nothing when no webhook is configured. */
